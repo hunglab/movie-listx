@@ -17,9 +17,9 @@ import {
   InputLeftElement,
   Input,
   Spinner,
-  Center
+  Center,
 } from "@chakra-ui/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   RiAlertLine,
   RiFileList3Line,
@@ -27,8 +27,11 @@ import {
   RiHeartFill,
   RiHeartLine,
   RiInboxLine,
-  RiSearchLine
+  RiSearchLine,
 } from "react-icons/ri";
+
+import axios from "axios";
+import { useCookies } from "react-cookie";
 
 /*
 Requirements:
@@ -56,43 +59,234 @@ Requirements:
     - Clicking on the solid heart icon button on the movie will remove the corresponding movie from the wishlist
 */
 
-const Movie = () => {
+const Movie = ({
+  sendData,
+  isWishList,
+}: {
+  sendData: any;
+  isWishList: any;
+}) => {
   const [isAddedToWishlist, setIsAddedToWishlist] = useState(false);
+  const [liked, setLiked] = useState(Array());
+  const [cookies, setCookie] = useCookies(["wishlist"]);
 
   return (
-    <Flex
-      w="full"
-      px="24px"
-      py="16px"
-      bgColor="white"
-      borderRadius="md"
-      justify="space-between"
-      align="center"
-      boxShadow="sm"
-    >
-      <Box>
-        <Text fontWeight="semibold" isTruncated>
-          Movie Title
-        </Text>
-        <Text color="gray.400" fontSize="xs" isTruncated>
-          2022
-        </Text>
-      </Box>
-      <IconButton
-        variant="ghost"
-        colorScheme="pink"
-        icon={isAddedToWishlist ? <RiHeartFill /> : <RiHeartLine />}
-        aria-label="edit"
-        _focus={{ outline: "none" }}
-        isRound
-        onClick={() => setIsAddedToWishlist(!isAddedToWishlist)}
-      />
-    </Flex>
+    <div>
+      {sendData.results &&
+        Object.values(sendData.results).map((item: any, index: number) =>
+          isWishList == true ? (
+            cookies.wishlist?.includes(item.id) ? (
+              <Flex
+                w="full"
+                px="24px"
+                py="16px"
+                mb="5px"
+                bgColor="white"
+                borderRadius="md"
+                justify="space-between"
+                align="center"
+                key={index}
+                boxShadow="sm">
+                <Box isTruncated>
+                  <Text fontWeight="semibold" isTruncated>
+                    {item.original_title}
+                  </Text>
+                  <Text color="gray.400" fontSize="xs" isTruncated>
+                    {item.release_date?.slice(
+                      0,
+                      item.release_date.indexOf("-")
+                    )}
+                  </Text>
+                </Box>
+                <IconButton
+                  variant="ghost"
+                  colorScheme="pink"
+                  icon={
+                    cookies.wishlist?.includes(item.id) ? (
+                      <RiHeartFill />
+                    ) : (
+                      <RiHeartLine />
+                    )
+                  }
+                  aria-label="edit"
+                  _focus={{ outline: "none" }}
+                  isRound
+                  onClick={() => {
+                    if (
+                      cookies.wishlist &&
+                      cookies.wishlist.includes(item.id)
+                    ) {
+                      let unlike = cookies.wishlist.filter(
+                        (elem: any) => elem !== item.id
+                      );
+                      setLiked(unlike);
+                      setCookie("wishlist", unlike, { path: "/" });
+                    } else {
+                      setLiked([...liked, item.id]);
+                      setCookie("wishlist", [...cookies.wishlist, item.id], {
+                        path: "/",
+                      });
+                    }
+                  }}
+                />
+              </Flex>
+            ) : (
+              ""
+            )
+          ) : (
+            <Flex
+              w="full"
+              px="24px"
+              py="16px"
+              mb="5px"
+              bgColor="white"
+              borderRadius="md"
+              justify="space-between"
+              align="center"
+              key={index}
+              boxShadow="sm">
+              <Box isTruncated>
+                <Text fontWeight="semibold" isTruncated>
+                  {item.original_title}
+                </Text>
+                <Text color="gray.400" fontSize="xs" isTruncated>
+                  {item.release_date?.slice(0, item.release_date.indexOf("-"))}
+                </Text>
+              </Box>
+              <IconButton
+                variant="ghost"
+                colorScheme="pink"
+                icon={
+                  cookies.wishlist?.includes(item.id) ? (
+                    <RiHeartFill />
+                  ) : (
+                    <RiHeartLine />
+                  )
+                }
+                aria-label="edit"
+                _focus={{ outline: "none" }}
+                isRound
+                onClick={() => {
+                  console.log(liked);
+                  if (cookies.wishlist && cookies.wishlist.includes(item.id)) {
+                    let unlike = cookies.wishlist.filter(
+                      (elem: any) => elem !== item.id
+                    );
+                    setLiked(unlike);
+                    setCookie("wishlist", unlike, { path: "/" });
+                  } else {
+                    setLiked([...liked, item.id]);
+                    setCookie("wishlist", [...cookies.wishlist, item.id], {
+                      path: "/",
+                    });
+                  }
+                }}
+              />
+            </Flex>
+          )
+        )}
+    </div>
   );
 };
 
 const App = () => {
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [empty, setEmpty] = useState(false);
+  const [data, setData] = useState([]);
+  const [searchData, setSearchData] = useState([]);
+  const [inputText, setInputText] = useState("");
+  const [isSearch, setIsSearch] = useState(false);
+  const [cookies, setCookie] = useCookies(["wishlist"]);
+
+  let inputHandler = (e: any) => {
+    var lowerCase = e.target.value.toLowerCase();
+    if (lowerCase.length <= 0) {
+      setIsSearch(false);
+    } else {
+      setIsSearch(true);
+    }
+    setInputText(lowerCase);
+
+    // Search API
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const { data: response } = await axios.get(
+          "https://api.themoviedb.org/3/search/movie?api_key=ba9e9eb1cba46fa2c366ab90f70a5dbe&language=en-US&query=" +
+            lowerCase +
+            "&page=1&include_adult=false"
+        );
+        if (Object.keys(response).length === 0) {
+          setEmpty(true);
+        } else {
+          setData(response);
+        }
+        // console.log(JSON.stringify(response));
+      } catch (error) {
+        console.error(error);
+        setError(true);
+      }
+      setLoading(false);
+      console.log("fetchdata");
+    };
+
+    if (lowerCase.length > 0 || lowerCase !== "") {
+      fetchData();
+    }
+  };
+
+  // Popular Data
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const { data: response } = await axios.get(
+          "https://api.themoviedb.org/3/movie/popular?api_key=ba9e9eb1cba46fa2c366ab90f70a5dbe&language=en-US&page=1"
+        );
+        if (Object.keys(response).length === 0) {
+          setEmpty(true);
+        } else {
+          setData(response);
+        }
+      } catch (error) {
+        console.error(error);
+        setError(true);
+      }
+      setLoading(false);
+    };
+
+    fetchData();
+  }, [isSearch]);
+
+  // Search Data
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const { data: response } = await axios.get(
+          "https://api.themoviedb.org/3/movie/popular?api_key=ba9e9eb1cba46fa2c366ab90f70a5dbe&language=en-US&page=1"
+        );
+        if (Object.keys(response).length === 0) {
+          setEmpty(true);
+        } else {
+          setSearchData(response);
+        }
+      } catch (error) {
+        console.error(error);
+        setError(true);
+      }
+      setLoading(false);
+    };
+
+    fetchData();
+  }, [isSearch]);
+
+  const sendData = (data: any) => {
+    console.log(JSON.stringify(data, null, "  "));
+    setData(data);
+  };
 
   return (
     <Box bgColor="#f3f3f3" h="100vh">
@@ -103,8 +297,7 @@ const App = () => {
             size="md"
             colorScheme="pink"
             leftIcon={<RiHeartLine />}
-            onClick={onOpen}
-          >
+            onClick={onOpen}>
             Wishlist
           </Button>
         </Flex>
@@ -114,30 +307,43 @@ const App = () => {
             color="gray.500"
             children={<RiSearchLine />}
           />
-          <Input type="tel" placeholder="Search Movies" bg="white" />
+          <Input
+            type="tel"
+            placeholder="Search Movies"
+            bg="white"
+            onChange={inputHandler}
+          />
         </InputGroup>
 
         {/* ----- Loading UI ----- */}
-        {/* <Box py="32px">
+        <Box py="32px" display={loading ? "flex" : "none"}>
           <Spinner color="pink.600" />
-        </Box> */}
+        </Box>
 
         {/* ----- Error UI ----- */}
-        {/* <Center py="32px" color="pink.600" flexDirection="column">
+        <Center
+          py="32px"
+          color="pink.600"
+          flexDirection="column"
+          display={error ? "flex" : "none"}>
           <Box fontSize="x-large" mb="8px">
             <RiAlertLine />
           </Box>
           <Box>Something went wrong.</Box>
           <Box>Please try again.</Box>
-        </Center> */}
+        </Center>
 
         {/* ----- Empty  UI ----- */}
-        {/* <Center py="32px" color="pink.600" flexDirection="column">
+        <Center
+          py="32px"
+          color="pink.600"
+          flexDirection="column"
+          display={empty ? "flex" : "none"}>
           <Box fontSize="x-large" mb="8px">
             <RiInboxLine />
           </Box>
           No data.
-        </Center> */}
+        </Center>
 
         {/* ----- Movie List (Popular movies) ------ */}
         <Flex
@@ -146,7 +352,9 @@ const App = () => {
           mb="8px"
           align="center"
           gap="4px"
-        >
+          display={
+            error ? "none" : empty ? "none" : isSearch ? "none" : "flex"
+          }>
           <RiFireFill />
           Popular movies
         </Flex>
@@ -157,18 +365,22 @@ const App = () => {
           flex={1}
           overflowY="auto"
           spacing="8px"
-        >
-          <Movie />
+          display={
+            error ? "none" : empty ? "none" : isSearch ? "none" : "flex"
+          }>
+          <Movie sendData={data} isWishList="false" />
         </Stack>
 
         {/* ----- Search Result UI ------ */}
-        {/* <Flex
+        <Flex
           fontWeight="600"
           color="pink.600"
           mb="8px"
           align="center"
           gap="4px"
-        >
+          display={
+            error ? "none" : empty ? "none" : isSearch ? "flex" : "none"
+          }>
           <RiFileList3Line />
           Search result
         </Flex>
@@ -179,17 +391,23 @@ const App = () => {
           flex={1}
           overflowY="auto"
           spacing="8px"
-        >
-          <Movie />
-        </Stack> */}
+          display={
+            error ? "none" : empty ? "none" : isSearch ? "flex" : "none"
+          }>
+          <Movie sendData={data} isWishList="false" />
+        </Stack>
 
         {/* ----- Empty Result UI ----- */}
-        {/* <Center py="32px" color="pink.600" flexDirection="column">
+        <Center
+          py="32px"
+          color="pink.600"
+          flexDirection="column"
+          display={empty ? "flex" : "none"}>
           <Box fontSize="x-large" mb="8px">
             <RiInboxLine />
           </Box>
           No matched result.
-        </Center> */}
+        </Center>
       </Flex>
 
       <Modal isOpen={isOpen} onClose={onClose}>
@@ -199,7 +417,11 @@ const App = () => {
           <ModalCloseButton />
           <ModalBody p="32px">
             {/* ----- Empty UI ----- */}
-            {/* <Center py="32px" color="pink.600" flexDirection="column">
+            <Center
+              py="32px"
+              color="pink.600"
+              flexDirection="column"
+              display={cookies.wishlist ? "none" : "flex"}>
               <Box fontSize="x-large" mb="8px">
                 <RiInboxLine />
               </Box>
@@ -209,15 +431,14 @@ const App = () => {
                 size="md"
                 variant="outline"
                 colorScheme="blackAlpha"
-                onClick={onClose}
-              >
+                onClick={onClose}>
                 Close
               </Button>
-            </Center> */}
+            </Center>
 
             {/* ----- Movie List ------ */}
-            <Stack>
-              <Movie />
+            <Stack display={cookies.wishlist ? "flex" : "none"}>
+              <Movie sendData={searchData} isWishList={true} />
             </Stack>
           </ModalBody>
         </ModalContent>
